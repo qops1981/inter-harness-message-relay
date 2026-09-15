@@ -1,0 +1,5 @@
+# Local research snapshots and model review logs are not distributable source.
+raw-website-downloads/
+
+# Forge run state is local and ephemeral.
+.forge/
