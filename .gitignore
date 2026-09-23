@@ -3,3 +3,6 @@ raw-website-downloads/
 
 # Forge run state is local and ephemeral.
 .forge/
+
+# Relay runtime state can contain private identity material.
+.ihr/

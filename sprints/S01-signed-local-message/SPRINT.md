@@ -1,6 +1,6 @@
 # Sprint S01 — Signed local message
 
-Status: PLAN APPROVED; PPP PENDING
+Status: IN PROGRESS; PPP APPROVED
 
 ## Outcome
 
@@ -49,3 +49,11 @@ None. This is the initial approved plan.
 ## Clearance
 
 Not cleared.
+
+Pending clearance reflections:
+
+- The initial B13 vector missed valid JSON containing literal escaped-backslash `u+d800` text.
+- The Forge Go row used rejected absolute package arguments.
+- The focused B13 panel found malformed JSON repair and whitespace-wrapped scalar rejection in JCS v1.0.1.
+- One security reviewer wrote four scratch probes in the worktree despite read-only instructions; the orchestrator removed them.
+- Two reviewer processes reported a stale Pi extension context after reload.
