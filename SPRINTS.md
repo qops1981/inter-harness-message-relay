@@ -42,6 +42,19 @@ Record answers and evidence in the cleared sprint's `SPRINT.md`:
 Apply each concrete effect to the remaining plans. Use `none` when evidence
 shows no change. Do not add speculative work.
 
+### Sizing and review checks
+
+- Keep one public success path and only its mandatory trust-boundary failures in
+  one sprint. Put independently demonstrable recovery or another trust boundary
+  in a later sprint.
+- If PPP needs more than 12 numbered behaviors, split the sprint or record a
+  human-approved size exception before implementation.
+- Preflight language commands in the same working directory and form that hooks
+  will use.
+- Run destructive or mutation review probes in a disposable copy. Compare the
+  worktree status before and after each read-only review; unexpected writes
+  invalidate that review evidence until removed and rerun.
+
 Each sprint is a separate Forge run. Before implementation, PPP creates one
 `SPEC-S<NN>-<name>.md` inside that sprint directory with EARS-lite behaviors,
 pseudocode, decisions, literal bounds, and the expected file surface. TDD starts
@@ -62,10 +75,10 @@ These are environment prerequisites, not a product sprint.
 
 ## Planned sprints
 
-1. [S01 — Signed local message](sprints/S01-signed-local-message/SPRINT.md)
-2. [S02 — Trusted two-peer replication](sprints/S02-trusted-two-peer-replication/SPRINT.md)
-3. [S03 — Durable addressed inbox](sprints/S03-durable-addressed-inbox/SPRINT.md)
+1. [S02 — Addressed local delivery](sprints/S02-addressed-local-delivery/SPRINT.md)
+2. [S03 — Offline delivery recovery](sprints/S03-offline-delivery-recovery/SPRINT.md)
+3. [S04 — Authenticated one-event replication](sprints/S04-authenticated-one-event-replication/SPRINT.md)
 
 ## Cleared sprint history
 
-None.
+1. [S01 — Signed local message](sprints/S01-signed-local-message/SPRINT.md) — cleared 2026-09-23; [PR #1](https://github.com/qops1981/inter-harness-message-relay/pull/1), merge `5c52428ca408fe9b9fce7680852a84898056cc2f`.

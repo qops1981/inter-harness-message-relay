@@ -2,7 +2,7 @@
 
 - Task: `IHR-S01-PPP`
 - Feature: `S01-signed-local-message`
-- Status: **REVIEWED WORKTREE — AWAITING HUMAN FINISH DECISION**
+- Status: **CLEARED 2026-09-23**
 - State: `.forge/state.json`
 - Worktree: `/mnt/nfs/energizer/code/ai/worktrees/ihr-s01-signed-local-message`
 - Base SHA: `a4ba85c26840a8722d5af908863c9c8f4f9be654`
@@ -19,6 +19,7 @@
 - Refute findings resolved: JCS grammar/whitespace handling, canonical-envelope response preservation, and non-EOF input-fault classification.
 - Fresh-eyes findings resolved: managed-entry/root checks, 4096-byte marker limit, cleanup warnings, response accounting, status start bounds, approved file surface, setup conflict classification, formatting, documentation, and primary example.
 - Final panel: correctness and execution found no remaining issue after correction; the security lens found no consequential issue.
+- Delivery: PR [#1](https://github.com/qops1981/inter-harness-message-relay/pull/1) merged as `5c52428ca408fe9b9fce7680852a84898056cc2f`; the human accepted the evidence by directing merge.
 
 This specification covers only the first uncleared sprint. It defines an S01
 profile of interface version 1. It does not implement the complete v1 protocol.
