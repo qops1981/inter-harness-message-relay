@@ -1,12 +1,273 @@
 # Developer Integration Guide
 
-Status: Draft for the pre-implementation protocol. Exact commands and wire
-schemas are pending interface approval.
+Status: The S01 signed-local-message profile below is implemented. Sections
+1–13 describe the planned relay architecture and are not claims that later
+phases are implemented.
 
 This guide describes how a harness-specific bridge integrates with the
 Inter-Harness Message Relay core. `SPEC.md` is normative when this guide and the
 protocol disagree. Canonical domain terms are in `CONTEXT.md`. Architectural
 rationale is in `DESIGN.md` and `DECISIONS.md`.
+
+## Implemented S01 profile
+
+S01 is a local, single-author profile of interface version 1. It implements
+project create/open, signed direct messages, verified one-event history pages,
+process status, shutdown, a strict JSONL stdio interface, and equivalent direct
+commands.
+
+Replication, queues, artifacts, presence, peer transport, and delivery remain
+future work despite the normative architectural sections below. S01 also does
+not implement reconciliation, claims, acknowledgments, waits, broadcasts, work
+status, key rotation, or harness bridges. No macOS or Windows runtime evidence
+is claimed here.
+
+### Build and start
+
+Use the repository-pinned Go toolchain:
+
+```sh
+mise exec -- go build -o ./relay ./cmd/relay
+```
+
+Every invocation requires this scope. Flags precede the command:
+
+```text
+[--root DIR] --project-id ID --harness-id ID --session-id ID
+```
+
+`ID` is respectively `p-`, `h-`, or `s-` plus exactly 32 lowercase hexadecimal
+digits. The default root is `.ihr` in the process working directory. `--root`
+selects another root; the relay resolves either value to an absolute path before
+filesystem access.
+
+The exact command forms are:
+
+```text
+relay [scope flags] stdio
+relay [scope flags] initialize --id ID --params JSON
+relay [scope flags] send       --id ID --params JSON
+relay [scope flags] history    --id ID --params JSON
+relay [scope flags] status     --id ID --params JSON
+relay [scope flags] shutdown   --id ID --params JSON
+```
+
+A direct non-initialize command opens the scoped project and selects version 1.
+Direct shutdown ends only that invocation. In stdio mode, send, history, status,
+and shutdown require a successful initialize request on that connection.
+
+### Requests and responses
+
+Each stdio request is one JSON object followed by LF. One optional CR immediately
+before LF is removed. Direct `--params` is the same exact params object without
+JSONL framing. Unknown or additional fields are rejected.
+
+Initialization has no `version` member. `create` is optional; omitting it opens
+existing state:
+
+```json
+{"id":"init_1","op":"initialize","params":{"versions":[1],"create":{"participant_id":"u-11111111111111111111111111111111","recipient_id":"u-22222222222222222222222222222222","recipient_public_key":"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"}}}
+{"id":"open_1","op":"initialize","params":{"versions":[1]}}
+```
+
+Later request shapes are exact:
+
+```json
+{"version":1,"id":"send_1","op":"send","params":{"to":"u-22222222222222222222222222222222","body":"hello"}}
+{"version":1,"id":"history_1","op":"history","params":{}}
+{"version":1,"id":"history_2","op":"history","params":{"after_seq":1}}
+{"version":1,"id":"status_1","op":"status","params":{}}
+{"version":1,"id":"shutdown_1","op":"shutdown","params":{}}
+```
+
+Every complete request gets one terminal response with the same ID. The exact
+outer shapes are:
+
+```json
+{"version":1,"id":"REQUEST_ID","ok":true,"result":{}}
+{"version":1,"id":"REQUEST_ID","ok":false,"error":{"code":"CODE","message":"FIXED MESSAGE"}}
+```
+
+An unsafe or unavailable request ID is `null`. Results have these exact fields:
+
+| Operation | Result |
+| --- | --- |
+| `initialize` | `project_id`, `project_epoch`, `participant_id`, `public_key`, `signing_key_id`, `recipient_id`, `capabilities` |
+| `send` | `event_id` |
+| `history` | `events`, `next_after_seq`; each item has `event_id`, `envelope` |
+| `status` | `started_at_ms`, `uptime_ms`, `sent`, `rejected`, `last_error` |
+| `shutdown` | Empty object |
+
+Initialization selects project epoch 1 and returns capabilities in this order:
+`send`, `history`, `status`, `shutdown`. History returns the lowest local author
+sequence above `after_seq`, or above 0 when omitted. It returns zero or one
+event. An empty page retains the supplied `after_seq` as `next_after_seq`.
+Status counters are process-local, reset on restart, and saturate at the maximum
+protocol integer. `last_error` is null or an object with `code` and `message`.
+
+### Envelope and signing
+
+A stored envelope contains exactly `payload` and `signature`. The payload
+contains exactly `version`, `project_id`, `project_epoch`, `type`, `author`,
+`signing_algorithm`, `signing_key_id`, `author_seq`, `prev`, `created`, `to`,
+and `body`. `created` contains `physical_ms` and `logical`. S01 fixes version and
+epoch to 1, type to `message`, and algorithm to `ed25519`.
+
+The relay canonicalizes the payload with RFC 8785, then signs the bytes
+`IHR-EVENT-V1`, one zero byte, and the canonical payload. The signature is
+canonical unpadded base64url. The event ID is `sha256:` plus the lowercase
+SHA-256 digest of the canonical signed envelope. Each send verifies the complete
+stored author chain before deriving the next sequence, predecessor, and hybrid
+logical clock. History also verifies the complete chain before returning data.
+
+### Literal limits
+
+All maxima are inclusive. Text byte counts are UTF-8 byte counts.
+
+| Item | S01 limit |
+| --- | --- |
+| Request record | 1–131072 bytes before LF, including an optional final CR; reader detection limit 131073 |
+| Direct CLI parameter JSON | 1–131072 bytes; no LF required |
+| Protocol response | At most 131072 bytes before LF |
+| Message body | 1–16384 decoded bytes; no trim or normalization |
+| Stored envelope | 1–131072 canonical JSON bytes; no LF or trailing bytes |
+| `project.json` | At most 4096 bytes |
+| Private seed | Exactly 32 raw bytes |
+| JSON nesting | At most 8 open containers, including the root object |
+| Object members | At most 16 per object |
+| Version offer | 1–8 distinct positive integers and must include 1 |
+| Protocol integer | 0–9007199254740991, unsigned decimal JSON token only |
+| Project epoch | Exactly 1 |
+| Author sequence | 1–9007199254740991; 16 decimal digits in a final filename |
+| HLC physical/logical value | 0–9007199254740991 each |
+| History page | Zero or one event; `after_seq` defaults to 0 |
+| Request ID | 1–64 ASCII characters in `[A-Za-z0-9_-]+` |
+| Project ID | `p-` plus exactly 32 lowercase hexadecimal digits |
+| Participant ID | `u-` plus exactly 32 lowercase hexadecimal digits |
+| Harness/session ID | `h-` or `s-` plus exactly 32 lowercase hexadecimal digits |
+| Digest | `sha256:` plus exactly 64 lowercase hexadecimal digits |
+| Public key/signature | Canonical unpadded base64url, 43/86 characters |
+| Status response | At most 4096 bytes |
+| Log record | At most 2048 bytes before LF |
+| Counter/uptime | Saturates at 9007199254740991 |
+| Concurrency | One operation; no internal request queue |
+
+S01 defines no artifact, batch, wait, claim, peer, presence, or queue limit
+because those operations are unavailable.
+
+### Stable errors, exits, and streams
+
+| Code | Fixed message |
+| --- | --- |
+| `invalid_request` | `Invalid request.` |
+| `record_too_large` | `Record exceeds limit.` |
+| `truncated_record` | `Record lacks LF.` |
+| `unsupported_version` | `Version 1 is required.` |
+| `not_initialized` | `Initialize first.` |
+| `already_initialized` | `Connection is initialized.` |
+| `unsupported_operation` | `Operation is unavailable.` |
+| `project_exists` | `Project already exists.` |
+| `project_missing` | `Project does not exist.` |
+| `invalid_project` | `Project state is invalid.` |
+| `invalid_recipient` | `Recipient is not registered.` |
+| `body_limit` | `Body length is invalid.` |
+| `integer_limit` | `Event integer exceeds limit.` |
+| `invalid_event` | `Stored event is invalid.` |
+| `storage_error` | `Storage operation failed.` |
+| `canceled` | `Operation was canceled.` |
+| `internal_error` | `Operation failed.` |
+
+Exit 0 means success or clean stdio EOF. Exit 2 means a framing, request,
+protocol, trust, event-validation, integer, or cancellation failure. Exit 1
+means storage, output, or unexpected internal failure. A complete recoverable
+stdio request error produces one error response and the connection continues;
+an oversized or truncated record produces one error response and exit 2.
+
+Stdout contains protocol JSONL only. Stderr contains bounded JSONL operational
+logs only. Logs do not contain bodies, raw requests, envelopes, keys,
+signatures, seeds, paths, file contents, credentials, or raw error text. Stderr
+failure is best effort. A response write failure exits 1 and never rolls back an
+already published event.
+
+### Storage and durability
+
+All durable and temporary state is below `ROOT`:
+
+```text
+ROOT/projects/PROJECT_ID/
+  project.json
+  events/PARTICIPANT_ID/SEQUENCE-EVENT_DIGEST_HEX.json
+  local/harnesses/HARNESS_ID/sessions/SESSION_ID/identity.seed
+```
+
+S01 creates no artifact, queue, cursor, lease, peer, archive, or log path. On
+POSIX systems directories are mode 0700 and files are mode 0600. Managed files
+must be regular files, managed paths must not contain symlinks, and `os.Root`
+constrains relative access. The operator must prevent another same-account
+process from replacing managed mounts or paths concurrently. Git ignore rules
+are not a security boundary.
+
+Create publishes `project.json` last. Event and setup publication creates an
+exclusive 0600 `.tmp-` file beside the final file, writes it completely, calls
+`File.Sync`, closes it, and creates the final name with a no-replace hard link.
+The hard link is the acceptance point; there is no direct-write or rename
+fallback. An identical existing final file is accepted without replacement. A
+different or non-regular final file is rejected. Exact temporary names are
+ignored by scans, and a cleanup failure after acceptance keeps success and emits
+a sanitized recovery warning.
+
+This is a process-crash guarantee on a validated local filesystem. It is not a
+power-loss guarantee: directories are not synced. Kernel failure, hardware-cache
+loss, NFS, SMB, and unvalidated filesystems are outside the guarantee. Native
+publication behavior still needs platform-specific validation.
+
+### Runnable create, send, restart, history, and tamper check
+
+This script prints only stable outcomes. Each direct command is a new process,
+so the history command verifies restart/open behavior. Operational logs are
+captured under the temporary directory and removed by the trap.
+
+```sh
+set -eu
+mise exec -- go build -o ./relay ./cmd/relay
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp" ./relay' EXIT
+root=$tmp/state
+project=p-00000000000000000000000000000001
+participant=u-11111111111111111111111111111111
+recipient=u-22222222222222222222222222222222
+harness=h-33333333333333333333333333333333
+session=s-44444444444444444444444444444444
+recipient_key=A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg
+scope="--root $root --project-id $project --harness-id $harness --session-id $session"
+
+init=$(./relay $scope initialize --id init_1 --params \
+  "{\"versions\":[1],\"create\":{\"participant_id\":\"$participant\",\"recipient_id\":\"$recipient\",\"recipient_public_key\":\"$recipient_key\"}}" \
+  2>"$tmp/init.log")
+printf '%s\n' "$init" | grep -Fq '"ok":true'
+printf '%s\n' "$init" | grep -Fq '"capabilities":["send","history","status","shutdown"]'
+printf '%s\n' 'initialize success; capabilities 4'
+
+sent=$(./relay $scope send --id send_1 \
+  --params "{\"to\":\"$recipient\",\"body\":\"hello\"}" 2>"$tmp/send.log")
+event_id=$(printf '%s\n' "$sent" | sed -n 's/.*"event_id":"\([^"]*\)".*/\1/p')
+printf '%s\n' "$event_id" | grep -Eq '^sha256:[0-9a-f]{64}$'
+printf '%s\n' 'send success; valid event ID'
+
+history=$(./relay $scope history --id history_1 --params '{}' 2>"$tmp/history.log")
+printf '%s\n' "$history" | grep -Fq "\"event_id\":\"$event_id\""
+printf '%s\n' 'restart history returned the same event ID'
+
+event_file=$root/projects/$project/events/$participant/0000000000000001-${event_id#sha256:}.json
+printf ' ' >>"$event_file"
+if tamper=$(./relay $scope history --id history_2 --params '{}' 2>"$tmp/tamper.log"); then
+  exit 1
+else
+  test "$?" -eq 2
+fi
+printf '%s\n' "$tamper" | grep -Fq '"error":{"code":"invalid_event","message":"Stored event is invalid."}'
+printf '%s\n' 'tamper detected: invalid_event'
+```
 
 ## 1. Integration boundary
 

@@ -31,10 +31,12 @@ Record answers and evidence in the cleared sprint's `SPRINT.md`:
    in their current order?
 3. **Predecessors:** Did the sprint reveal work that should precede either
    remaining sprint?
-4. **Tools:** Which required tools, access, fixtures, or automation were missing?
-5. **Went well:** What reduced risk, effort, or uncertainty?
-6. **Did not go well:** What caused failure, rework, delay, or confusion?
-7. **Support:** What human decision, environment change, research, or other
+4. **Prior-sprint gaps:** Did a cleared sprint that affected this sprint omit
+   required work, risk, evidence, or support?
+5. **Tools:** Which required tools, access, fixtures, or automation were missing?
+6. **Went well:** What reduced risk, effort, or uncertainty?
+7. **Did not go well:** What caused failure, rework, delay, or confusion?
+8. **Support:** What human decision, environment change, research, or other
    support is required before another sprint starts?
 
 Apply each concrete effect to the remaining plans. Use `none` when evidence
